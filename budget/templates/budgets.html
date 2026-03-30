@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+
+{% block title %}Budgets - Budget Tracking System{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>Budget Management</h1>
+        <button class="btn btn-primary" onclick="openBudgetModal()">
+            <i class="fas fa-plus"></i> Create Budget
+        </button>
+    </div>
+
+    <!-- Budget Form Modal -->
+    <div id="budgetModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New Budget</h2>
+                <span class="close" onclick="closeBudgetModal()">&times;</span>
+            </div>
+            <form id="budgetForm" class="modal-body">
+                <div class="form-group">
+                    <label for="budgetCategory">Category</label>
+                    <select id="budgetCategory" name="category" required>
+                        <option value="">Select a category</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="budgetLimit">Budget Limit</label>
+                    <input type="number" id="budgetLimit" name="limit" step="0.01" required placeholder="0.00">
+                </div>
+
+                <div class="form-group">
+                    <label for="budgetMonth">Month</label>
+                    <input type="month" id="budgetMonth" name="month" required>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Create Budget</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeBudgetModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Budgets Grid -->
+    <div id="budgetsList" class="budget-grid">
+        <p class="text-center">Loading budgets...</p>
+    </div>
+</div>
+
+<style>
+.budget-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.budget-card {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+
+.budget-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.budget-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.budget-card-header h3 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.budget-card-header .delete-btn {
+    background: none;
+    border: none;
+    color: #e74c3c;
+    cursor: pointer;
+    font-size: 18px;
+}
+
+.budget-card-header .delete-btn:hover {
+    color: #c0392b;
+}
+
+.budget-month {
+    color: #7f8c8d;
+    font-size: 14px;
+}
+
+.budget-progress-wrapper {
+    margin: 20px 0;
+}
+
+.budget-progress-bar {
+    background: #ecf0f1;
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+}
+
+.budget-progress {
+    height: 100%;
+    transition: width 0.3s;
+}
+
+.budget-progress.warning {
+    background: #f39c12;
+}
+
+.budget-progress.danger {
+    background: #e74c3c;
+}
+
+.budget-progress.success {
+    background: #27ae60;
+}
+
+.budget-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    margin-top: 10px;
+}
+
+.budget-stats-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.budget-stats-item label {
+    color: #7f8c8d;
+    font-size: 12px;
+}
+
+.budget-stats-item span {
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.4);
+}
+
+.modal.show {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background-color: #fefefe;
+    padding: 0;
+    border: 1px solid #888;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+}
+</style>
+
+<script>
+// Set current month as default
+const today = new Date();
+const year = today.getFullYear();
+const month = String(today.getMonth() + 1).padStart(2, '0');
+document.getElementById('budgetMonth').value = `${year}-${month}`;
+
+// Load categories
+async function loadBudgetCategories() {
+    try {
+        const response = await fetch('{{ url_for("get_categories") }}');
+        const categories = await response.json();
+
+        const select = document.getElementById('budgetCategory');
+        categories.forEach(cat => {
+            if (cat.type === 'Expense') {
+                const option = document.createElement('option');
+                option.value = cat.category_id;
+                option.textContent = cat.name;
+                select.appendChild(option);
+            }
+        });
+    } catch (error) {
+        console.error('Error loading categories:', error);
+    }
+}
+
+// Load budgets
+async function loadBudgets() {
+    try {
+        const response = await fetch('{{ url_for("budgets") }}');
+        const budgets = await response.json();
+
+        // Check if response contains an error
+        if (!Array.isArray(budgets)) {
+            console.error('Error response:', budgets);
+            document.getElementById('budgetsList').innerHTML = `<p class="text-center" style="color: #e74c3c;">Error: ${budgets.error || 'Unknown error'}</p>`;
+            return;
+        }
+
+        if (budgets.length === 0) {
+            document.getElementById('budgetsList').innerHTML = '<p class="text-center">No budgets created yet. Create one to get started!</p>';
+            return;
+        }
+
+        const html = budgets.map(b => {
+            const spent = parseFloat(b.spent);
+            const limit = parseFloat(b.limit_amount);
+            const percentageValue = (spent / limit * 100);
+            const remaining = limit - spent;
+
+            let progressClass = 'success';
+            if (percentageValue >= 100) progressClass = 'danger';
+            else if (percentageValue >= 80) progressClass = 'warning';
+
+            return `
+                <div class="budget-card">
+                    <div class="budget-card-header">
+                        <div>
+                            <h3>${b.category_name}</h3>
+                            <p class="budget-month">${b.month}</p>
+                        </div>
+                        <button class="delete-btn" onclick="deleteBudget(${b.budget_id})">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+
+                    <div class="budget-progress-wrapper">
+                        <div class="budget-progress-bar">
+                            <div class="budget-progress ${progressClass}" style="width: ${Math.min(percentageValue, 100)}%"></div>
+                        </div>
+                        <div class="budget-stats">
+                            <div class="budget-stats-item">
+                                <label>Spent</label>
+                                <span>$${spent.toFixed(2)}</span>
+                            </div>
+                            <div class="budget-stats-item">
+                                <label>Limit</label>
+                                <span>$${limit.toFixed(2)}</span>
+                            </div>
+                            <div class="budget-stats-item">
+                                <label>Remaining</label>
+                                <span class="${remaining < 0 ? 'negative' : ''}">${remaining < 0 ? '-' : ''}$${Math.abs(remaining).toFixed(2)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ecf0f1;">
+                        <p style="margin: 0; text-align: center; color: #7f8c8d; font-size: 14px;">
+                            ${percentageValue.toFixed(1)}% of budget used
+                        </p>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        document.getElementById('budgetsList').innerHTML = html;
+    } catch (error) {
+        console.error('Error loading budgets:', error);
+        document.getElementById('budgetsList').innerHTML = '<p class="text-center" style="color: #e74c3c;">Error loading budgets: ' + error.message + '</p>';
+    }
+}
+
+// Create budget
+document.getElementById('budgetForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const data = {
+        category_id: document.getElementById('budgetCategory').value,
+        limit_amount: document.getElementById('budgetLimit').value,
+        month: document.getElementById('budgetMonth').value
+    };
+
+    try {
+        const response = await fetch('{{ url_for("budgets") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            closeBudgetModal();
+            document.getElementById('budgetForm').reset();
+            document.getElementById('budgetMonth').value = `${year}-${month}`;
+            loadBudgets();
+        }
+    } catch (error) {
+        alert('Error creating budget');
+    }
+});
+
+// Delete budget
+async function deleteBudget(id) {
+    if (confirm('Delete this budget?')) {
+        try {
+            const response = await fetch(`{{ url_for("delete_budget", budget_id=999) }}`.replace('999', id), {
+                method: 'DELETE'
+            });
+            const result = await response.json();
+            if (result.success) {
+                loadBudgets();
+            }
+        } catch (error) {
+            alert('Error deleting budget');
+        }
+    }
+}
+
+// Modal functions
+function openBudgetModal() {
+    document.getElementById('budgetModal').classList.add('show');
+}
+
+function closeBudgetModal() {
+    document.getElementById('budgetModal').classList.remove('show');
+}
+
+// Load on page load
+loadBudgetCategories();
+loadBudgets();
+</script>
+{% endblock %}

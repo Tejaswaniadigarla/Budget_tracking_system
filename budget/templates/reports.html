@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Reports - Budget Tracking System{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>Financial Reports</h1>
+    </div>
+
+    <!-- Report Charts -->
+    <div class="report-grid">
+        <div class="card">
+            <div class="card-header">
+                <h2>Monthly Income & Expenses</h2>
+            </div>
+            <div class="card-body">
+                <canvas id="monthlyChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2>Expense Categories</h2>
+            </div>
+            <div class="card-body">
+                <canvas id="categoryChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Table -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Summary by Month</h2>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Month</th>
+                            <th>Income</th>
+                            <th>Expenses</th>
+                            <th>Balance</th>
+                            <th>Savings Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody id="summaryTable">
+                        <tr><td colspan="5" class="text-center">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.report-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+</style>
+
+<script>
+async function loadReports() {
+    try {
+        const response = await fetch('{{ url_for("monthly_summary") }}');
+        const data = await response.json();
+
+        // Organize data
+        const months = Object.keys(data).sort().reverse();
+        const incomes = [];
+        const expenses = [];
+
+        months.forEach(month => {
+            incomes.push(data[month]['Income'] || 0);
+            expenses.push(data[month]['Expense'] || 0);
+        });
+
+        // Monthly Chart
+        const ctx1 = document.getElementById('monthlyChart').getContext('2d');
+        new Chart(ctx1, {
+            type: 'bar',
+            data: {
+                labels: months,
+                datasets: [
+                    {
+                        label: 'Income',
+                        data: incomes,
+                        backgroundColor: '#27ae60',
+                        borderColor: '#229954',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Expenses',
+                        data: expenses,
+                        backgroundColor: '#e74c3c',
+                        borderColor: '#c0392b',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Amount ($)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+
+        // Category Chart
+        const categoryResponse = await fetch('{{ url_for("category_analysis") }}');
+        const categoryData = await categoryResponse.json();
+
+        const expenseCategories = categoryData.expense.map(c => c.category);
+        const expenseAmounts = categoryData.expense.map(c => c.amount);
+
+        const ctx2 = document.getElementById('categoryChart').getContext('2d');
+        new Chart(ctx2, {
+            type: 'doughnut',
+            data: {
+                labels: expenseCategories,
+                datasets: [{
+                    data: expenseAmounts,
+                    backgroundColor: [
+                        '#3498db',
+                        '#e74c3c',
+                        '#f39c12',
+                        '#9b59b6',
+                        '#1abc9c',
+                        '#34495e'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+
+        // Summary Table
+        const summaryHtml = months.map(month => {
+            const income = data[month]['Income'] || 0;
+            const expense = data[month]['Expense'] || 0;
+            const balance = income - expense;
+            const savingsRate = income > 0 ? ((balance / income) * 100).toFixed(1) : 0;
+
+            return `
+                <tr>
+                    <td>${month}</td>
+                    <td class="income">$${income.toFixed(2)}</td>
+                    <td class="expense">$${expense.toFixed(2)}</td>
+                    <td class="${balance >= 0 ? 'positive' : 'negative'}">$${balance.toFixed(2)}</td>
+                    <td>${savingsRate}%</td>
+                </tr>
+            `;
+        }).join('');
+
+        document.getElementById('summaryTable').innerHTML = summaryHtml;
+
+    } catch (error) {
+        console.error('Error loading reports:', error);
+    }
+}
+
+loadReports();
+</script>
+{% endblock %}

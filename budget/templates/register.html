@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Register - Budget Tracking System{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-box">
+        <div class="auth-header">
+            <i class="fas fa-wallet"></i>
+            <h1>BudgetTracker</h1>
+            <p>Create Your Account</p>
+        </div>
+
+        <form id="registerForm" class="auth-form">
+            <div class="form-group">
+                <label for="name">Full Name</label>
+                <input type="text" id="name" name="name" required placeholder="Your full name">
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" required placeholder="your@email.com">
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required placeholder="Enter password">
+            </div>
+
+            <div class="form-group">
+                <label for="confirmPassword">Confirm Password</label>
+                <input type="password" id="confirmPassword" name="confirmPassword" required placeholder="Confirm password">
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block">Register</button>
+
+            <div class="form-footer">
+                <p>Already have an account? <a href="{{ url_for('login') }}">Login here</a></p>
+            </div>
+        </form>
+
+        <div id="successMessage" class="alert alert-success" style="display: none;"></div>
+        <div id="errorMessage" class="alert alert-danger" style="display: none;"></div>
+    </div>
+</div>
+
+<script>
+document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('name').value;
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    const errorMsg = document.getElementById('errorMessage');
+    const successMsg = document.getElementById('successMessage');
+
+    errorMsg.style.display = 'none';
+    successMsg.style.display = 'none';
+
+    try {
+        const response = await fetch('{{ url_for("register") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ name, email, password, confirm_password: confirmPassword })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            successMsg.textContent = data.message;
+            successMsg.style.display = 'block';
+            document.getElementById('registerForm').reset();
+            setTimeout(() => {
+                window.location.href = '{{ url_for("login") }}';
+            }, 2000);
+        } else {
+            errorMsg.textContent = data.message;
+            errorMsg.style.display = 'block';
+        }
+    } catch (error) {
+        errorMsg.textContent = 'An error occurred. Please try again.';
+        errorMsg.style.display = 'block';
+    }
+});
+</script>
+{% endblock %}

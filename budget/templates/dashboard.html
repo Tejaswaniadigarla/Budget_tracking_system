@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Budget Tracking System{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="dashboard-header">
+        <h1>Welcome, {{ user_name }}!</h1>
+        <p>Your financial overview for this month</p>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="summary-cards">
+        <div class="card income-card">
+            <div class="card-icon">
+                <i class="fas fa-arrow-down"></i>
+            </div>
+            <div class="card-content">
+                <h3>Total Income</h3>
+                <p class="amount" id="totalIncome">$0.00</p>
+            </div>
+        </div>
+
+        <div class="card expense-card">
+            <div class="card-icon">
+                <i class="fas fa-arrow-up"></i>
+            </div>
+            <div class="card-content">
+                <h3>Total Expenses</h3>
+                <p class="amount" id="totalExpenses">$0.00</p>
+            </div>
+        </div>
+
+        <div class="card balance-card">
+            <div class="card-icon">
+                <i class="fas fa-balance-scale"></i>
+            </div>
+            <div class="card-content">
+                <h3>Balance</h3>
+                <p class="amount" id="balance">$0.00</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- Recent Transactions -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Recent Transactions</h2>
+                <a href="{{ url_for('transactions_page') }}" class="btn btn-small">View All</a>
+            </div>
+            <div class="card-body">
+                <div id="recentTransactions" class="transactions-list">
+                    <p class="text-muted">Loading...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Budget Status -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Budget Status</h2>
+                <a href="{{ url_for('budgets_page') }}" class="btn btn-small">Manage</a>
+            </div>
+            <div class="card-body">
+                <div id="budgetStatus" class="budget-list">
+                    <p class="text-muted">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="dashboard-grid">
+        <div class="card">
+            <div class="card-header">
+                <h2>Income vs Expenses</h2>
+            </div>
+            <div class="card-body">
+                <canvas id="incomeExpenseChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2>Category Distribution</h2>
+            </div>
+            <div class="card-body">
+                <canvas id="categoryChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function loadDashboardData() {
+    try {
+        const response = await fetch('{{ url_for("get_dashboard_data") }}');
+        const data = await response.json();
+
+        // Update summary cards
+        document.getElementById('totalIncome').textContent = '$' + data.income.toFixed(2);
+        document.getElementById('totalExpenses').textContent = '$' + data.expenses.toFixed(2);
+        document.getElementById('balance').textContent = '$' + data.balance.toFixed(2);
+
+        // Update balance card color
+        const balanceCard = document.querySelector('.balance-card');
+        if (data.balance >= 0) {
+            balanceCard.classList.add('positive');
+        } else {
+            balanceCard.classList.add('negative');
+        }
+
+        // Recent Transactions
+        const transactionsHtml = data.recent_transactions.map(t => `
+            <div class="transaction-item">
+                <div class="transaction-info">
+                    <span class="category">${t.category_name}</span>
+                    <span class="date">${new Date(t.transaction_date).toLocaleDateString()}</span>
+                </div>
+                <span class="amount ${t.type === 'Income' ? 'income' : 'expense'}">
+                    ${t.type === 'Income' ? '+' : '-'}$${parseFloat(t.amount).toFixed(2)}
+                </span>
+            </div>
+        `).join('');
+
+        document.getElementById('recentTransactions').innerHTML = transactionsHtml || '<p class="text-muted">No transactions yet</p>';
+
+        // Budget Status
+        const budgetHtml = data.budgets.map(b => `
+            <div class="budget-item">
+                <div class="budget-info">
+                    <span class="category">${b.category}</span>
+                    <span class="spent">$${b.spent.toFixed(2)} / $${b.limit.toFixed(2)}</span>
+                </div>
+                <div class="budget-bar">
+                    <div class="budget-progress" style="width: ${b.percentage}%; background: ${b.status === 'Over Budget' ? '#e74c3c' : '#27ae60'};"></div>
+                </div>
+                <span class="status ${b.status === 'Over Budget' ? 'warning' : 'success'}">${b.status}</span>
+            </div>
+        `).join('');
+
+        document.getElementById('budgetStatus').innerHTML = budgetHtml || '<p class="text-muted">No budgets created</p>';
+
+        // Charts
+        createCharts(data.income, data.expenses);
+
+    } catch (error) {
+        console.error('Error loading dashboard data:', error);
+    }
+}
+
+function createCharts(income, expenses) {
+    // Income vs Expenses Chart
+    const ctx1 = document.getElementById('incomeExpenseChart').getContext('2d');
+    new Chart(ctx1, {
+        type: 'doughnut',
+        data: {
+            labels: ['Income', 'Expenses'],
+            datasets: [{
+                data: [income, expenses],
+                backgroundColor: ['#27ae60', '#e74c3c'],
+                borderColor: ['#fff', '#fff'],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+
+    // Category Distribution Chart
+    fetch('{{ url_for("category_analysis") }}')
+        .then(r => r.json())
+        .then(categoryData => {
+            const expenseCategories = categoryData.expense.map(c => c.category);
+            const expenseAmounts = categoryData.expense.map(c => c.amount);
+
+            const ctx2 = document.getElementById('categoryChart').getContext('2d');
+            new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: expenseCategories || ['No data'],
+                    datasets: [{
+                        label: 'Expenses',
+                        data: expenseAmounts || [0],
+                        backgroundColor: '#3498db',
+                        borderColor: '#2980b9',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        });
+}
+
+// Load data on page load
+loadDashboardData();
+setInterval(loadDashboardData, 30000); // Refresh every 30 seconds
+</script>
+{% endblock %}
